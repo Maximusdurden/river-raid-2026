@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSite, copyIndex, existsExact, htmlReferences, jsSpecifiers, verifySite } from '../scripts/build-pages.mjs';
+import { buildSite, copyIndex, existsExact, hasCaseMismatch, htmlReferences, jsSpecifiers, verifySite } from '../scripts/build-pages.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (...parts) => readFileSync(join(ROOT, ...parts), 'utf8');
@@ -234,6 +234,23 @@ test('verifySite reports a root-absolute URL', t => {
     const problems = verifySite(site);
     assert.equal(problems.length, 1);
     assert.match(problems[0], /root-absolute/);
+});
+
+// Regression: CI (Linux) failed because this was decided by asking the OS whether the wrongly-cased path
+// exists. That says yes on Windows/macOS and no on Linux, so the wording differed. It is now decided from
+// directory listings, so these hold on every OS.
+test('hasCaseMismatch separates "wrong capitalisation" from "does not exist", on any OS', t => {
+    const site = scratch(t);
+    assert.equal(hasCaseMismatch(site, 'styles.css'), false, 'exact name: no mismatch');
+    assert.equal(hasCaseMismatch(site, 'Styles.css'), true, 'same name, different case');
+    assert.equal(hasCaseMismatch(site, 'STYLES.CSS'), true);
+    assert.equal(hasCaseMismatch(site, 'dist/SRC/main.js'), true, 'a directory segment can be the wrong case');
+    assert.equal(hasCaseMismatch(site, 'dist/src/Main.js'), true);
+    assert.equal(hasCaseMismatch(site, 'nothing-like-it.css'), false, 'missing outright is not a case problem');
+    assert.equal(hasCaseMismatch(site, 'dist/nope/main.js'), false);
+    assert.equal(hasCaseMismatch(site, 'styles.css/deeper'), false, 'a file used as a directory is not a case problem');
+    assert.equal(existsExact(site, 'Styles.css'), false);
+    assert.equal(existsExact(site, 'styles.css'), true);
 });
 
 test('verifySite reports wrong capitalisation, which only fails on case-sensitive hosts', t => {

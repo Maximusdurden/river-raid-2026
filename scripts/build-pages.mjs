@@ -59,6 +59,30 @@ export function existsExact(baseDir, relPath) {
     return true;
 }
 
+/**
+ * True if `relPath` would resolve on a case-INsensitive disk (Windows, macOS) but not on a case-sensitive
+ * one (Linux, GitHub Pages). Decided by comparing directory listings, never by asking the OS, so the answer
+ * is the same wherever this runs.
+ */
+export function hasCaseMismatch(baseDir, relPath) {
+    let dir = baseDir;
+    for (const part of relPath.split(/[\\/]+/).filter(p => p !== '' && p !== '.')) {
+        let names;
+        try {
+            names = readdirSync(dir);
+        } catch {
+            return false;
+        }
+        if (names.includes(part)) {
+            dir = join(dir, part);
+            continue;
+        }
+        // A different spelling of this segment exists, so only the capitalisation is wrong.
+        return names.some(name => name.toLowerCase() === part.toLowerCase());
+    }
+    return false;
+}
+
 function walk(dir, filter) {
     const found = [];
     for (const name of readdirSync(dir)) {
@@ -121,8 +145,8 @@ export function verifySite(site) {
         }
         const wanted = clean.endsWith('/') ? posix.join(toPosix(rel), 'index.html') : toPosix(rel);
         if (!existsExact(site, wanted)) {
-            const loose = existsSync(join(site, wanted));
-            problems.push(`${fromFile}: ${kind} "${ref}" ${loose ? 'has the wrong capitalisation (it works on Windows/macOS but 404s on Linux)' : 'does not exist in the site'}.`);
+            const wrongCase = hasCaseMismatch(site, wanted);
+            problems.push(`${fromFile}: ${kind} "${ref}" ${wrongCase ? 'has the wrong capitalisation (it works on Windows/macOS but 404s on Linux)' : 'does not exist in the site'}.`);
         }
     };
 
