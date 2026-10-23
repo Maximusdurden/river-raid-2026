@@ -1,0 +1,23 @@
+{
+  "name": "river-raid-2026",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "River Raid (2026 Modern Kinetic Remake) using Three.js and Web Audio",
+  "main": "game.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-pages.mjs --index",
+    "build:pages": "node scripts/build-pages.mjs --site _site",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "prestart": "npm run build",
+    "start": "npx http-server . -p 8080 -c-1"
+  },
+  "dependencies": {
+    "three": "^0.128.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2"
+  }
+}

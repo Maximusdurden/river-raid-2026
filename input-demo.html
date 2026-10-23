@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>River Raid · Input Lab</title>
+    <style>
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #070d19; color: #dfedff; }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: clamp(20px, 5vw, 64px); background: radial-gradient(ellipse at top, #162747, #070d19 70%); min-height: 100vh; }
+        main { max-width: 1000px; margin: auto; }
+        .eyebrow { color: #65dfcd; text-transform: uppercase; letter-spacing: .22em; font-size: .75rem; }
+        h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: 12px 0; letter-spacing: -.04em; }
+        p { color: #a7bad3; line-height: 1.6; }
+        .layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; margin: 28px 0; }
+        .panel { background: #0f1a2bdd; border: 1px solid #29405a; border-radius: 18px; padding: 24px; }
+        canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 12px; background: #081222; outline: 2px solid #29405a; cursor: crosshair; }
+        canvas:focus { outline-color: #65dfcd; box-shadow: 0 0 30px #65dfcd18; }
+        dl { margin: 0; }
+        dl > div { display: flex; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #24344a; gap: 12px; }
+        dt { color: #a7bad3; }
+        dd { margin: 0; color: #65dfcd; font: 600 1rem ui-monospace, monospace; }
+        .small { font-size: .85rem; }
+        kbd { background: #24344a; border-radius: 4px; padding: 2px 5px; color: #dfedff; }
+        a { color: #65dfcd; }
+        input { background: #081222; color: #dfedff; border: 1px solid #486480; padding: 10px; border-radius: 6px; width: 100%; margin-top: 8px; }
+        @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<main>
+    <div class="eyebrow">River Raid 2026 / Phase 01</div>
+    <h1>Unified input lab.</h1>
+    <p>One contract. Keyboard or controller. Click the flight pad to capture controls.</p>
+    <div class="layout">
+        <section class="panel" aria-label="Interactive flight pad">
+            <canvas id="input-canvas" width="480" height="480" tabindex="0" aria-label="Flight pad. Use arrows or WASD to move, Space or J to fire, Escape or P to pause."></canvas>
+            <p id="focus-status" class="small">Click or Tab into the flight pad to activate input.</p>
+            <p class="small">Axes: <kbd>WASD</kbd> / <kbd>↑ ↓ ← →</kbd><br>Fire: <kbd>Space</kbd> / <kbd>J</kbd> · Pause: <kbd>Esc</kbd> / <kbd>P</kbd></p>
+        </section>
+        <section class="panel" aria-label="Live input state">
+            <div class="eyebrow">Live frame snapshot</div>
+            <dl>
+                <div><dt>moveX</dt><dd id="move-x">0.000</dd></div>
+                <div><dt>moveY</dt><dd id="move-y">0.000</dd></div>
+                <div><dt>fire</dt><dd id="fire">false</dd></div>
+                <div><dt>firePressed</dt><dd id="fire-pressed">false</dd></div>
+                <div><dt>pausePressed</dt><dd id="pause-pressed">false</dd></div>
+                <div><dt>activeDevice</dt><dd id="active-device">keyboard</dd></div>
+                <div><dt>Fire / pause edges</dt><dd id="edge-counts">0 / 0</dd></div>
+            </dl>
+            <p id="pad-status" class="small">Connect a standard gamepad and press a button to expose it to the browser.</p>
+            <p class="small">Stick / D-pad to move · A / Cross, RB / R1, RT / R2 to fire · Start / Options to pause. Deadzone: 15%.</p>
+            <label class="small" for="typing-test">Focus safety check (typing does not control the game)</label>
+            <input id="typing-test" placeholder="Try WASD, J or Space here" autocomplete="off">
+        </section>
+    </div>
+    <p class="small">Edges are true for one frame only; counters make short pulses visible. <a href="./">Return to the game</a></p>
+    <noscript>This demo requires JavaScript.</noscript>
+</main>
+<script type="module" src="./dist/demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+name: Deploy to GitHub Pages
+
+# Runs the full check (typecheck, tests, build) on every push to main and, only if all of it
+# passes, publishes the game. One-time setup: Settings -> Pages -> Build and deployment ->
+# Source: "GitHub Actions". The game is then at https://<user>.github.io/<repo>/.
+#
+# This file must live in the `.github/workflows` folder at the ROOT OF THE REPOSITORY that
+# contains package.json. If this project sits in a sub-folder of a larger repository, move the
+# file to the repository root and set `working-directory` and the artifact `path` (see the
+# comments below).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deployment finish rather than cancelling it half-way; a newer push waits its turn.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # If the game is in a sub-folder of the repository, uncomment:
+    # defaults:
+    #   run:
+    #     working-directory: river-raid-2026
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          # cache-dependency-path: river-raid-2026/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Assemble the static site (relative paths, index.html, verified)
+        run: npm run build:pages
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+          # path: river-raid-2026/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

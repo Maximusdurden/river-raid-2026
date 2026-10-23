@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>River Raid 2026</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header>
+    <h1>River Raid 2026 <span>/ Phase 5</span></h1>
+    <form id="seed-form" onsubmit="return false">
+        <input id="seed-input" type="text" autocomplete="off" spellcheck="false" aria-label="Seed" placeholder="Seed (number or any text)">
+        <button id="seed-apply" type="button">Apply seed</button>
+        <button id="seed-random" type="button">Random</button>
+    </form>
+    <button id="restart" type="button">Restart</button>
+    <button id="mute-toggle" type="button" aria-pressed="false">Mute (M)</button>
+    <label>Vol <input id="volume" type="range" min="0" max="100" step="5" value="60" aria-label="Master volume"></label>
+    <label><input id="guides-toggle" type="checkbox"> Hitboxes</label>
+    <label><input id="debug-toggle" type="checkbox" checked> Debug</label>
+</header>
+
+<div id="stage">
+    <canvas id="river-canvas" width="960" height="720" aria-label="River Raid. Steer with the arrow keys or A and D, boost with up or W, brake with down or S, fire with Space, J, Enter or a mouse click, pause with Escape or P, open options with O."></canvas>
+    <pre id="debug" aria-hidden="true">Starting…</pre>
+    <div id="focus-hint" hidden>Click the river to capture keyboard / mouse / gamepad</div>
+    <button id="options-button" type="button" aria-haspopup="dialog" aria-expanded="false">⚙ Options <kbd>O</kbd></button>
+</div>
+
+<footer>
+    Steer <kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> · boost <kbd>↑</kbd>/<kbd>W</kbd> · brake <kbd>↓</kbd>/<kbd>S</kbd> · fire <kbd>Space</kbd>/<kbd>J</kbd>/<kbd>Enter</kbd>/click (hold to repeat) · gamepad stick / D-pad, A / RB / RT · pause <kbd>Esc</kbd>/<kbd>P</kbd> · mute <kbd>M</kbd> · options <kbd>O</kbd> (rebind keys, audio, game mode) ·
+    <a href="./input-demo.html">Input lab</a>
+</footer>
+<noscript>This game requires JavaScript.</noscript>
+<script type="module" src="./dist/src/main.js"></script>
+</body>
+</html>
