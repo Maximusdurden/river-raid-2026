@@ -6,6 +6,7 @@ import { PatrolBoat } from '../entities/enemies/PatrolBoat.js';
 import type { GameMode } from '../game/GameMode.js';
 import type { GameSession, HudNotice, ScorePopup } from '../game/GameSession.js';
 import type { RiverGenerator } from '../world/RiverGenerator.js';
+import { Celebration } from './Celebration.js';
 import {
     RiverRenderer,
     VIEW_HEIGHT,
@@ -48,6 +49,10 @@ function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
 
 /** The HUD reminder for the options screen. */
 export const OPTIONS_HINT = '[O] OPTIONS';
+export const SCORES_HINT = '[H] HIGH SCORES';
+/** Where the end screen starts while a high-score celebration is on (normally 150), and the banner's centre line above it. */
+export const CELEBRATION_TOP = 196;
+export const CELEBRATION_BANNER_Y = 124;
 
 /** The line under the score: the section, and in campaign how far through the 10 bridges the run is. */
 export function sectionLine(mode: GameMode, bridgesDown: number, campaignLength: number): string {
@@ -667,6 +672,8 @@ export class GameRenderer implements FrameRenderer {
     readonly river: RiverRenderer;
     /** Reports the sound state for the HUD icon. Set by the host once the sound engine exists. */
     audioState: () => AudioState = () => 'unsupported';
+    /** The high-score show: set it going with `celebration.start(...)`; the renderer draws the border and banner. */
+    readonly celebration = new Celebration();
     private readonly session: GameSession;
     private world: RiverGenerator;
 
@@ -684,6 +691,18 @@ export class GameRenderer implements FrameRenderer {
 
     destroy(): void {
         this.river.destroy();
+    }
+
+    /**
+     * Hitbox outlines and guide lines (the page's "Hitboxes" toggle). False unless something turns
+     * it on: it is never remembered from an earlier session.
+     */
+    get showHitboxes(): boolean {
+        return this.river.options.showGuides;
+    }
+
+    set showHitboxes(on: boolean) {
+        this.river.options.showGuides = on;
     }
 
     render(state: RenderState, alpha: number): void {
@@ -706,6 +725,10 @@ export class GameRenderer implements FrameRenderer {
         this.drawPopups(ctx, camY);
         if (this.river.options.showGuides) this.drawHitboxes(ctx, camY, a);
         this.drawHud(ctx, time, state.userPaused ?? state.paused);
+        // The end screen dims everything under it; a celebration's fireworks are drawn again on top so they stay bright.
+        if (this.celebration.active && (this.session.gameOver || this.session.victory)) {
+            this.session.particles.render(ctx, camY, a, VIEW_HEIGHT);
+        }
         ctx.restore();
     }
 
@@ -937,6 +960,7 @@ export class GameRenderer implements FrameRenderer {
         ctx.fillStyle = 'rgba(160, 200, 230, 0.7)';
         ctx.font = `600 11px ${MONO}`;
         ctx.fillText(OPTIONS_HINT, VIEW_WIDTH - 12, 108);
+        ctx.fillText(SCORES_HINT, VIEW_WIDTH - 12, 124);
         ctx.textBaseline = 'alphabetic';
 
         this.drawFuelGauge(ctx, time);
@@ -944,6 +968,7 @@ export class GameRenderer implements FrameRenderer {
 
         if (session.gameOver || session.victory) {
             this.drawEndScreen(ctx, time);
+            if (this.celebration.active) this.drawCelebration(ctx);
         } else if (paused) {
             ctx.fillStyle = 'rgba(2, 8, 18, 0.45)';
             ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
@@ -995,7 +1020,8 @@ export class GameRenderer implements FrameRenderer {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'alphabetic';
         const cx = VIEW_WIDTH / 2;
-        const top = 150;
+        // A celebration needs the room above the verdict for its banner, so the whole card sits lower.
+        const top = this.celebration.active ? CELEBRATION_TOP : 150;
 
         ctx.shadowColor = won ? 'rgba(255, 214, 96, 0.7)' : 'rgba(255, 93, 74, 0.6)';
         ctx.shadowBlur = 24;
@@ -1056,6 +1082,48 @@ export class GameRenderer implements FrameRenderer {
             ctx.font = `600 20px ${MONO}`;
             ctx.fillText(won ? 'PRESS FIRE TO FLY AGAIN' : 'PRESS FIRE TO PLAY AGAIN', cx, cardTop + 266 + 42);
         }
+        ctx.restore();
+    }
+
+    /**
+     * The high-score show over the end screen: a flashing neon-gold border and a pulsing banner.
+     * The all-time record gets a double border, a faster flash and a bigger, brighter banner.
+     */
+    private drawCelebration(ctx: CanvasRenderingContext2D): void {
+        const show = this.celebration;
+        const kind = show.kind;
+        if (!kind) return;
+        const record = kind === 'record';
+        const age = show.age;
+        const fadeIn = clamp01(age / 0.25);
+        const flash = record ? 0.5 + 0.5 * Math.sin(age * 14) : 0.5 + 0.5 * Math.sin(age * 6);
+        // The flash eases to a steady glow once the fireworks are over.
+        const glow = 0.45 + 0.55 * flash * (0.35 + 0.65 * show.intensity);
+        ctx.save();
+        ctx.globalAlpha = fadeIn;
+        ctx.shadowColor = '#ffcc33';
+        ctx.shadowBlur = record ? 28 : 18;
+        ctx.strokeStyle = `rgba(255, 214, 64, ${glow.toFixed(3)})`;
+        ctx.lineWidth = record ? 10 : 6;
+        ctx.strokeRect(5, 5, VIEW_WIDTH - 10, VIEW_HEIGHT - 10);
+        if (record) {
+            ctx.strokeStyle = `rgba(255, 244, 168, ${(1 - glow * 0.6).toFixed(3)})`;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(20, 20, VIEW_WIDTH - 40, VIEW_HEIGHT - 40);
+        }
+
+        const pulse = 1 + (record ? 0.08 : 0.04) * Math.sin(age * (record ? 9 : 6));
+        ctx.translate(VIEW_WIDTH / 2, record ? CELEBRATION_BANNER_Y - 2 : CELEBRATION_BANNER_Y + 2);
+        ctx.scale(pulse, pulse);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `800 ${record ? 46 : 38}px ${SANS}`;
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = 'rgba(40, 18, 0, 0.9)';
+        const text = record ? '\u2605 NEW ALL-TIME RECORD! \u2605' : 'NEW HIGH SCORE!';
+        ctx.strokeText(text, 0, 0);
+        ctx.fillStyle = record && flash > 0.5 ? '#fff6c2' : '#ffd23f';
+        ctx.fillText(text, 0, 0);
         ctx.restore();
     }
 

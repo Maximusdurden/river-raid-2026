@@ -66,7 +66,7 @@ export const ACTION_LABELS: Readonly<Record<KeybindAction, string>> = {
 };
 
 /** Hard-wired page shortcuts: they can never be bound to an action. */
-export const RESERVED_CODES: Readonly<Record<string, string>> = { KeyM: 'mute', KeyO: 'options' };
+export const RESERVED_CODES: Readonly<Record<string, string>> = { KeyM: 'mute', KeyO: 'options', KeyH: 'high scores' };
 
 /** Most inputs one action may have. */
 export const MAX_KEYS_PER_ACTION = 6;

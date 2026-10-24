@@ -83,6 +83,7 @@ export class FuelSystem {
     readonly config: Readonly<FuelConfig>;
     private currentLevel: number;
     private refuelActive = false;
+    private burnMultiplier = 1;
 
     constructor(config: Partial<FuelConfig> = {}) {
         this.config = { ...DEFAULT_FUEL_CONFIG, ...config };
@@ -125,13 +126,25 @@ export class FuelSystem {
         return this.refuelActive;
     }
 
-    /** Units burned per second at the given throttle in [-1, 1]. */
+    /** The difficulty multiplier on every burn rate (1 = as configured). Refuelling is not scaled. */
+    get burnScale(): number {
+        return this.burnMultiplier;
+    }
+
+    /** Multiplies every burn rate by `k` from now on. Throws unless `k` is positive and finite. */
+    setBurnScale(k: number): void {
+        if (!Number.isFinite(k) || k <= 0) throw new RangeError('Fuel burn scale must be a positive finite number.');
+        this.burnMultiplier = k;
+    }
+
+    /** Units burned per second at the given throttle in [-1, 1], including the difficulty multiplier. */
     burnRate(throttle: number): number {
         const c = this.config;
         const t = Number.isFinite(throttle) ? Math.max(-1, Math.min(1, throttle)) : 0;
-        return t >= 0
+        const base = t >= 0
             ? c.cruiseBurnRate + (c.boostBurnRate - c.cruiseBurnRate) * t
             : c.cruiseBurnRate + (c.brakeBurnRate - c.cruiseBurnRate) * -t;
+        return base * this.burnMultiplier;
     }
 
     /** Burns and/or refuels for one step. Ignores non-positive or non-finite steps. */

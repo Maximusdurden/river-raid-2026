@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
     keybinds: 'riverraid.keybinds',
     audio: 'riverraid.audio_settings',
     gameMode: 'riverraid.game_mode',
+    highScores: 'riverraid.highscores',
     /** Phase 4 stored these two separately; they are read once to carry settings over. */
     legacyMuted: 'riverraid.muted',
     legacyVolume: 'riverraid.volume',

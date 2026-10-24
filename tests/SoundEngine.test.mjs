@@ -344,7 +344,8 @@ test('master volume is clamped to [0, 1] and applied live; bad values are ignore
 test('every cue plays, schedules sound and is logged', async () => {
     const { engine, ctx } = await running();
     const cues = ['fire', 'hit', 'explosion-enemy', 'explosion-depot', 'explosion-jet', 'explosion-bridge', 'fanfare',
-        'extra-life', 'respawn', 'game-over', 'victory', 'fighter-launch'];
+        'extra-life', 'respawn', 'game-over', 'victory', 'fighter-launch',
+        'new-high-score', 'record-broken', 'menu-tick', 'menu-select', 'score-saved'];
     for (const cue of cues) {
         const nodes = ctx.nodes.length;
         assert.equal(engine.play(cue), true, cue);

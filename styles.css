@@ -5,7 +5,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 14px; background: #04080f; color: #dfedff; overflow: hidden; }
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; width: min(100%, calc((100vh - 130px) * 4 / 3)); min-height: 44px; }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; width: min(100%, calc((100vh - 130px) * 4 / 3)); min-height: 44px; }
 h1 { margin: 0; font-size: 1rem; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 h1 span { color: var(--accent); }
 form { display: flex; gap: 6px; flex: 1 1 280px; min-width: 240px; }
@@ -77,3 +77,74 @@ a { color: var(--accent); }
     .options-backdrop:not([hidden]) .options-dialog { animation: options-in .14s ease-out; }
     @keyframes options-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
 }
+
+/* ------------------------------------------------------------------ high scores */
+
+#scores-button { display: inline-flex; align-items: center; gap: 6px; }
+.options-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.options-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--danger); border-radius: 8px; background: rgba(255, 106, 90, .08); }
+.options-confirm[hidden] { display: none; }
+.options-confirm .options-note { margin: 0; flex: 1 1 200px; }
+.options-danger { background: #4a1a1a; border-color: var(--danger); color: #ffe3de; }
+.options-danger:hover:not(:disabled) { background: #6a2424 !important; }
+
+/* The initials screen and the table share a lighter dim than the options screen, so the celebration on the canvas shows through. */
+.hs-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(2, 6, 14, .52); }
+.hs-backdrop[hidden] { display: none; }
+.hs-dialog { --crt-green: #5dff7a; --crt-amber: #ffb000; --crt-dim: #2f9d44; position: relative; display: flex; flex-direction: column; width: min(620px, 100%); max-height: 100%; overflow: auto; padding: 16px 20px 14px; background: #040a2e; color: var(--crt-green); border: 2px solid var(--crt-amber); border-radius: 12px; box-shadow: 0 0 0 4px #02051a, 0 20px 60px rgba(0, 0, 0, .75), 0 0 36px rgba(255, 176, 0, .18), inset 0 0 40px rgba(20, 60, 160, .25); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; text-shadow: 0 0 6px rgba(93, 255, 122, .55); outline: none; }
+/* Scanlines. */
+.hs-dialog::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 10px; background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, .22) 3px); }
+.hs-title { margin: 0 0 4px; text-align: center; font-size: 1.35rem; letter-spacing: .22em; color: var(--crt-amber); text-shadow: 0 0 10px rgba(255, 176, 0, .7); }
+.hs-subtitle { margin: 0 0 10px; text-align: center; font-size: .9rem; letter-spacing: .12em; color: var(--crt-green); }
+.hs-prompt { margin: 6px 0 10px; text-align: center; font-size: .8rem; letter-spacing: .3em; color: var(--crt-amber); }
+.hs-help { margin: 8px 0 0; font-size: .68rem; line-height: 1.5; color: var(--crt-dim); text-align: center; text-shadow: none; }
+.hs-live { margin: 0; min-height: 1.2em; font-size: .72rem; color: var(--crt-dim); text-align: center; text-shadow: none; }
+.hs-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.hs-slots { display: flex; justify-content: center; gap: 18px; margin: 6px 0; }
+.hs-slot-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hs-step { padding: 2px 14px; font-size: .8rem; line-height: 1.2; background: #0a1450; color: var(--crt-amber); border-color: #7a5600; text-shadow: none; }
+.hs-step:hover:not(:disabled) { background: #14217a; }
+input.hs-slot { flex: none; width: 3.1ch; min-width: 0; padding: 4px 0; text-align: center; font: 700 3.2rem/1.1 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--crt-green); background: #02051a; border: 2px solid var(--crt-dim); border-radius: 8px; caret-color: transparent; text-shadow: 0 0 10px rgba(93, 255, 122, .7); }
+input.hs-slot[data-active] { border-color: var(--crt-amber); color: #fff0b8; box-shadow: 0 0 14px rgba(255, 176, 0, .55); animation: hs-blink 1s steps(2, jump-none) infinite; }
+.hs-actions { display: flex; justify-content: center; gap: 12px; margin-top: 8px; }
+.hs-dialog .options-button { background: #0a1450; border-color: #7a5600; color: var(--crt-amber); text-shadow: none; }
+.hs-dialog .options-primary { background: #5a3d00; border-color: var(--crt-amber); color: #fff0b8; }
+.hs-dialog .options-primary:hover { background: #7a5400 !important; }
+.hs-dialog .options-close { background: #0a1450; border-color: #7a5600; color: var(--crt-amber); text-shadow: none; }
+
+/* The all-time record: a flashing golden frame and a pulsing title. */
+.hs-initials[data-tier="record"] { border-color: #ffd23f; animation: hs-record-frame .7s ease-in-out infinite alternate; }
+.hs-initials[data-tier="record"] .hs-title { color: #fff0b8; animation: hs-pulse .55s ease-in-out infinite alternate; }
+.hs-initials[data-tier="score"] .hs-title { animation: hs-pulse 1s ease-in-out infinite alternate; }
+
+.hs-board { width: min(680px, 100%); }
+.hs-board-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.hs-board-header .hs-title { flex: 1; margin: 0; }
+.hs-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.hs-table th { padding: 4px 8px; text-align: left; font-weight: 700; font-size: .72rem; letter-spacing: .18em; color: var(--crt-amber); border-bottom: 1px solid #7a5600; }
+.hs-table td { padding: 5px 8px; white-space: nowrap; }
+.hs-table td.hs-score { text-align: right; font-variant-numeric: tabular-nums; }
+.hs-table th:nth-child(3) { text-align: right; }
+.hs-table tr[data-rank="1"] td { color: #fff0b8; text-shadow: 0 0 8px rgba(255, 210, 63, .8); }
+.hs-table tr[data-empty] td { color: var(--crt-dim); text-shadow: none; }
+.hs-table tr[data-latest] td { background: rgba(255, 176, 0, .14); color: #fff0b8; animation: hs-blink 1s steps(2, jump-none) infinite; }
+.hs-latest-mark { color: var(--crt-amber); font-weight: 700; }
+.hs-board-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.hs-board-footer .hs-help { margin: 0; text-align: left; }
+
+@keyframes hs-blink { 50% { opacity: .45; } }
+@keyframes hs-pulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+@keyframes hs-record-frame { from { box-shadow: 0 0 0 4px #02051a, 0 0 18px rgba(255, 210, 63, .5), inset 0 0 30px rgba(255, 210, 63, .12); } to { box-shadow: 0 0 0 4px #02051a, 0 0 46px rgba(255, 210, 63, .95), inset 0 0 60px rgba(255, 210, 63, .28); } }
+@media (prefers-reduced-motion: reduce) {
+    .hs-dialog *, .hs-dialog { animation: none !important; }
+    .hs-table tr[data-latest] td { opacity: 1; }
+}
+@media (max-width: 560px) {
+    .hs-table { font-size: .78rem; }
+    .hs-table th, .hs-table td { padding: 4px 4px; }
+    .hs-table th:nth-child(4), .hs-table td:nth-child(4) { display: none; }
+}
+
+/* The focused slot is shown by its frame, not by a text selection. */
+input.hs-slot::selection { background: transparent; color: inherit; }

@@ -240,6 +240,33 @@ export class ParticleSystem {
         }
     }
 
+    /**
+     * A firework for the high-score celebration: a ring flash, a burst of long-lived gold sparks
+     * and a few drifting embers. `scale` ~ 1 is a normal burst.
+     */
+    celebrate(x: number, y: number, scale = 1): void {
+        const s = Math.max(0.3, scale);
+        const r = this.rng;
+        this.emit({ kind: 'shockwave', x, y, life: 0.6, size: 4 * s, sizeEnd: 70 * s });
+        this.emit({ kind: 'fire', x, y, life: 0.25, size: 22 * s, sizeEnd: 4 });
+        for (let i = 0, n = Math.round(46 * s); i < n; i++) {
+            const angle = (i / n) * TAU + r.range(-0.08, 0.08);
+            const speed = r.range(70, 330) * s;
+            this.emit({
+                kind: 'spark', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                life: r.range(0.7, 1.5), size: 2.2, sizeEnd: 0.4, drag: 1.6, tint: r.next(),
+            });
+        }
+        for (let i = 0, n = Math.round(10 * s); i < n; i++) {
+            const angle = r.range(0, TAU);
+            const speed = r.range(20, 90) * s;
+            this.emit({
+                kind: 'fire', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                life: r.range(0.5, 1.0), size: r.range(5, 9) * s, sizeEnd: 1, drag: 2, tint: r.next(),
+            });
+        }
+    }
+
     /** A small spray of sparks, e.g. a missile hitting a bank. */
     impactSparks(x: number, y: number, count = 8): void {
         const r = this.rng;

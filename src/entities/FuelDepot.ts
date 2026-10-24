@@ -85,6 +85,7 @@ export class DepotSpawner {
     readonly config: Readonly<DepotConfig>;
     private readonly world: DepotWorld;
     private readonly cache = new Map<number, DepotPlacement | null>();
+    private chanceScale: ((worldY: number) => number) | null = null;
 
     constructor(world: DepotWorld, config: Partial<DepotConfig> = {}) {
         this.world = world;
@@ -108,6 +109,17 @@ export class DepotSpawner {
         return [Math.max(0, Math.ceil((minY - jitter) / spacing)), Math.floor((maxY + jitter) / spacing)];
     }
 
+    /**
+     * Multiplies the chance that a slot holds a depot by `scale(worldY)` (0..1; null = no change).
+     * It only ever REMOVES depots: a slot keeps its random roll, and the roll is compared with a
+     * smaller chance, so everything that survives is exactly where it was. Endless mode uses this
+     * to ease depots out after bridge 10. Clears the placement cache, so call it before streaming.
+     */
+    setChanceScale(scale: ((worldY: number) => number) | null): void {
+        this.chanceScale = scale;
+        this.cache.clear();
+    }
+
     /** Where slot `slot` puts a depot, or null if it stays empty. Memoised. */
     place(slot: number): DepotPlacement | null {
         const cached = this.cache.get(slot);
@@ -127,8 +139,10 @@ export class DepotSpawner {
         const c = this.config;
         const world = this.world;
         const roll = (k: number): number => hashToUnit(world.seed, SALT_DEPOT + k, slot);
-        if (slot < 0 || roll(0) >= c.chance) return null;
+        if (slot < 0) return null;
         const y = slot * c.spacing + (roll(1) * 2 - 1) * c.jitter;
+        const scale = this.chanceScale ? Math.max(0, Math.min(1, this.chanceScale(y))) : 1;
+        if (roll(0) >= c.chance * scale) return null;
         if (y < c.minY) return null;
         if (world.findBridges(y - c.bridgeClearance, y + c.bridgeClearance).length > 0) return null;
 

@@ -9,6 +9,14 @@ import { PlayerJet, type DeathCause, type PlayerJetConfig } from '../entities/Pl
 import type { Projectile } from '../entities/Projectile.js';
 import { ParticleSystem } from '../rendering/Particles.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
+import {
+    CAMPAIGN_DIFFICULTY,
+    DEFAULT_DIFFICULTY,
+    difficultyAt,
+    validateDifficultyConfig,
+    type DifficultyConfig,
+    type DifficultyProfile,
+} from '../systems/Difficulty.js';
 import { EnemySpawner, type EnemySpawnConfig } from '../systems/EnemySpawner.js';
 import { FuelSystem, type FuelConfig } from '../systems/FuelSystem.js';
 import {
@@ -60,6 +68,8 @@ export interface GameOptions extends Partial<GameSettings> {
     weapon?: Partial<WeaponConfig>;
     depots?: Partial<DepotConfig>;
     enemies?: Partial<EnemySpawnConfig>;
+    /** Tuning for endless mode's rising difficulty (see `systems/Difficulty.ts`). Has no effect in campaign. */
+    difficulty?: Partial<DifficultyConfig>;
     /** Overrides for the point table (boat 30, helicopter 60, depot 80, fighter 100, bridge 500). */
     points?: Partial<PointTable>;
 }
@@ -198,6 +208,8 @@ export class GameSession implements Simulation {
 
     private readonly depotConfig: Partial<DepotConfig>;
     private readonly enemyConfig: Partial<EnemySpawnConfig>;
+    private readonly difficultyConfig: Readonly<DifficultyConfig>;
+    private currentDifficulty: DifficultyProfile = CAMPAIGN_DIFFICULTY;
     private readonly destroyedDepots = new Set<number>();
     /** Placement ids already turned into enemies during the current life. */
     private readonly spawnedEnemies = new Set<number>();
@@ -211,7 +223,7 @@ export class GameSession implements Simulation {
     private deathHandled = false;
 
     constructor(options: GameOptions = {}) {
-        const { jet, fuel, weapon, depots, enemies, points, ...scalars } = options;
+        const { jet, fuel, weapon, depots, enemies, points, difficulty, ...scalars } = options;
         this.settings = { ...DEFAULT_GAME_SETTINGS, ...scalars };
         const s = this.settings;
         if (!Number.isInteger(s.startLives) || s.startLives < 1) {
@@ -230,6 +242,8 @@ export class GameSession implements Simulation {
         this.weapon = new WeaponSystem(weapon);
         this.depotConfig = depots ?? {};
         this.enemyConfig = enemies ?? {};
+        this.difficultyConfig = { ...DEFAULT_DIFFICULTY, ...difficulty };
+        validateDifficultyConfig(this.difficultyConfig);
         this.progression = new ProgressionSystem({
             startLives: s.startLives,
             bonusLifeEvery: s.bonusLifeEvery,
@@ -262,10 +276,20 @@ export class GameSession implements Simulation {
         return this.mode === 'endless' ? 0 : this.settings.victoryBridges;
     }
 
+    /**
+     * How hard the game is right now. Campaign is always the plain game (every scale 1); in
+     * endless it follows the number of bridges destroyed, see `systems/Difficulty.ts`.
+     */
+    get difficulty(): DifficultyProfile {
+        return this.currentDifficulty;
+    }
+
     /** Switches between campaign and endless, effective immediately. Throws on anything else. */
     setMode(mode: GameMode): void {
         if (!isGameMode(mode)) throw new RangeError(`Unknown game mode "${String(mode)}".`);
         this.mode = mode;
+        this.installSpawnerDifficulty();
+        this.applyDifficulty();
     }
 
     /** The run is over, by defeat or victory: the world is frozen. */
@@ -326,6 +350,9 @@ export class GameSession implements Simulation {
         this.gameOverTime = 0;
         this.time = 0;
 
+        // Stage 0 again: the jet, the fuel and the spawners all start from the plain game.
+        this.installSpawnerDifficulty();
+        this.applyDifficulty();
         const y = this.settings.startY;
         this.jet.spawn(safeSpawnX(world, y), y);
         this.deathHandled = false;
@@ -440,6 +467,33 @@ export class GameSession implements Simulation {
 
     // -------------------------------------------------------------- internals
 
+    /**
+     * Sets the jet's speed scale and the fuel's burn scale for the current mode and stage.
+     * Campaign: both 1. Endless: they follow the bridges destroyed. The jet keeps its current
+     * speed and eases to the new limits, so a bridge falling never jolts the scroll.
+     */
+    private applyDifficulty(): void {
+        const profile = this.mode === 'endless'
+            ? difficultyAt(this.progression.stage, this.difficultyConfig)
+            : CAMPAIGN_DIFFICULTY;
+        this.currentDifficulty = profile;
+        this.jet.setSpeedScale(profile.speedScale);
+        this.fuel.setBurnScale(profile.burnScale);
+    }
+
+    /**
+     * Things placed in the world are scaled by where they are (the bridges below that spot), so
+     * the layout stays a pure function of the seed. Installed once per mode, not per bridge.
+     */
+    private installSpawnerDifficulty(): void {
+        const world = this.world;
+        if (!world) return;
+        const config = this.difficultyConfig;
+        const endless = this.mode === 'endless';
+        this.spawner?.setChanceScale(endless ? y => difficultyAt(world.stageAt(y), config).depotChanceScale : null);
+        this.enemySpawner?.setDifficulty(endless ? stage => difficultyAt(stage, config) : null);
+    }
+
     private emit(event: GameEvent): void {
         for (const listener of this.listeners) listener(event);
     }
@@ -535,6 +589,7 @@ export class GameSession implements Simulation {
     private destroyBridge(span: BridgeSpan, impactX: number, world: RiverGenerator): void {
         if (!this.bridges.destroy(span)) return;
         const award = this.progression.award('bridge');
+        this.applyDifficulty(); // a bridge down is one stage harder (endless only)
         const river = world.sample(span.centerY);
         this.particles.explosion(impactX, span.centerY, 1.5);
         // A chain of blasts along the span, so the whole deck visibly collapses.
@@ -546,7 +601,8 @@ export class GameSession implements Simulation {
         this.addPopup(impactX, span.topY + 30, award.points);
         this.emit({ type: 'bridge-destroyed', bridge: span, points: award.points });
         const cleared = this.progression.stage;
-        this.addNotice('stage-clear', `SECTION ${cleared} CLEARED`, `BRIDGE DESTROYED  +${award.points}`);
+        const faster = this.mode === 'endless' ? `  SPEED +${((this.currentDifficulty.speedScale - 1) * 100).toFixed(1)}%` : '';
+        this.addNotice('stage-clear', `SECTION ${cleared} CLEARED`, `BRIDGE DESTROYED  +${award.points}${faster}`);
         this.emit({ type: 'stage-clear', cleared });
         this.applyBonus(award, impactX, span.topY + 70);
         const goal = this.victoryGoal;

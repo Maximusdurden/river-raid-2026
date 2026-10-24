@@ -328,7 +328,8 @@ test('warnings off never affects effects or the drone', async () => {
 test('sfx off: every one-shot cue is refused and nothing is scheduled', async () => {
     const { engine, ctx } = await running({ engine: { channels: { sfxEnabled: false } } });
     const cues = ['fire', 'hit', 'explosion-enemy', 'explosion-depot', 'explosion-jet', 'explosion-bridge', 'fanfare',
-        'extra-life', 'respawn', 'game-over', 'victory', 'fighter-launch'];
+        'extra-life', 'respawn', 'game-over', 'victory', 'fighter-launch',
+        'new-high-score', 'record-broken', 'menu-tick', 'menu-select', 'score-saved'];
     const nodes = ctx.nodes.length;
     for (const cue of cues) assert.equal(engine.play(cue), false, cue);
     engine.handleEvent({ type: 'bridge-destroyed' });

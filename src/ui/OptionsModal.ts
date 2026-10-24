@@ -47,6 +47,13 @@ export interface OptionsModalOptions {
     /** Bridges needed to win in campaign, for the label. Default 10. */
     campaignBridges?: number;
     onOpenChange?: (open: boolean) => void;
+    /** Asked before the O key opens the screen; return false to refuse (another screen is up). */
+    canOpen?: () => boolean;
+    /**
+     * Shows a HIGH SCORES section: `show` is called after this screen has closed, `reset` after the
+     * player has confirmed erasing the table. Leave it out to omit the section.
+     */
+    highScores?: { show(): void; reset(): void };
 }
 
 export const OPTIONS_OPEN_CODE = 'KeyO';
@@ -110,6 +117,8 @@ export class OptionsModal {
     private capture: ActiveCapture | null = null;
     private previousFocus: HTMLElement | null = null;
     private pressStartedOnBackdrop = false;
+    private scoresConfirm: HTMLElement | null = null;
+    private scoresStatus: HTMLElement | null = null;
 
     constructor(options: OptionsModalOptions) {
         this.opts = options;
@@ -164,6 +173,7 @@ export class OptionsModal {
     close(): void {
         if (!this.isShown) return;
         this.cancelCapture();
+        this.hideResetConfirm();
         this.isShown = false;
         this.root.hidden = true;
         this.releasePause?.();
@@ -281,6 +291,27 @@ export class OptionsModal {
         mode.appendChild(this.el('p', { class: 'options-note' }, 'Applies immediately and is remembered.'));
         body.appendChild(mode);
 
+        // High scores (only if the host provides them).
+        if (this.opts.highScores) {
+            const scores = this.el('section', { class: 'options-section', 'aria-labelledby': 'options-scores' });
+            scores.appendChild(this.el('h3', { id: 'options-scores' }, 'HIGH SCORES'));
+            scores.appendChild(this.el('p', { class: 'options-note' }, 'Your ten best runs, kept in this browser. Press H any time to see them.'));
+            const actions = this.el('div', { class: 'options-actions' });
+            actions.appendChild(this.el('button', { type: 'button', class: 'options-button', 'data-role': 'show-scores' }, '\ud83c\udfc6 View High Scores'));
+            actions.appendChild(this.el('button', { type: 'button', class: 'options-button', 'data-role': 'reset-scores' }, 'Reset Leaderboard\u2026'));
+            scores.appendChild(actions);
+            const confirm = this.el('div', { class: 'options-confirm', role: 'alertdialog', 'aria-label': 'Confirm reset', hidden: '' });
+            confirm.appendChild(this.el('span', { class: 'options-note' }, 'Erase every score and restore the starting table?'));
+            confirm.appendChild(this.el('button', { type: 'button', class: 'options-button options-danger', 'data-role': 'confirm-reset-scores' }, 'Yes, reset'));
+            confirm.appendChild(this.el('button', { type: 'button', class: 'options-button', 'data-role': 'cancel-reset-scores' }, 'Cancel'));
+            scores.appendChild(confirm);
+            const scoresStatus = this.el('p', { class: 'options-status', role: 'status', 'aria-live': 'polite', 'data-kind': 'info' });
+            scores.appendChild(scoresStatus);
+            body.appendChild(scores);
+            this.scoresConfirm = confirm;
+            this.scoresStatus = scoresStatus;
+        }
+
         const footer = this.el('div', { class: 'options-footer' });
         footer.appendChild(this.el('span', { class: 'options-note' }, 'Esc or O closes this screen. The game is paused while it is open.'));
         footer.appendChild(this.el('button', { type: 'button', class: 'options-button options-primary', 'data-role': 'close' }, 'Done'));
@@ -375,6 +406,25 @@ export class OptionsModal {
         this.status.setAttribute('data-kind', kind);
     }
 
+    private setScoresStatus(text: string, kind: StatusKind): void {
+        if (!this.scoresStatus) return;
+        this.scoresStatus.textContent = text;
+        this.scoresStatus.setAttribute('data-kind', kind);
+    }
+
+    /** The reset needs a second, deliberate click: the prompt opens with Cancel focused. */
+    private showResetConfirm(): void {
+        const confirm = this.scoresConfirm;
+        if (!confirm) return;
+        confirm.hidden = false;
+        this.setScoresStatus('', 'info');
+        confirm.querySelector<HTMLElement>('[data-role="cancel-reset-scores"]')?.focus();
+    }
+
+    private hideResetConfirm(): void {
+        if (this.scoresConfirm) this.scoresConfirm.hidden = true;
+    }
+
     // ------------------------------------------------------------------ rebinding
 
     private beginCapture(action: KeybindAction, mode: CaptureMode): void {
@@ -456,6 +506,26 @@ export class OptionsModal {
                 this.opts.input.resetDefaultBindings();
                 this.setStatus('Controls reset to default.', 'ok');
                 break;
+            case 'show-scores':
+                // This screen closes first (giving the game back its pause hold and focus), then the table opens.
+                this.close();
+                this.opts.highScores?.show();
+                break;
+            case 'reset-scores':
+                this.showResetConfirm();
+                break;
+            case 'cancel-reset-scores':
+                this.hideResetConfirm();
+                this.setScoresStatus('Cancelled. Nothing was erased.', 'info');
+                this.scoresStatus?.parentElement?.querySelector<HTMLElement>('[data-role="reset-scores"]')?.focus();
+                break;
+            case 'confirm-reset-scores':
+                if (!this.scoresConfirm || this.scoresConfirm.hidden) break; // only ever acts on a question that is showing
+                this.hideResetConfirm();
+                this.opts.highScores?.reset();
+                this.setScoresStatus('Leaderboard reset to the starting table.', 'ok');
+                this.scoresStatus?.parentElement?.querySelector<HTMLElement>('[data-role="reset-scores"]')?.focus();
+                break;
             default:
                 break;
         }
@@ -502,6 +572,7 @@ export class OptionsModal {
         if (event.code === OPTIONS_OPEN_CODE) {
             if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
             if (isTextEntry(event.target)) return;
+            if (!this.isShown && this.opts.canOpen && !this.opts.canOpen()) return;
             event.preventDefault();
             this.toggle();
             return;

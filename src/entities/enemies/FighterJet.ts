@@ -5,6 +5,8 @@ export const FIGHTER_HEIGHT = 22;
 export const FIGHTER_POINTS = 100;
 export const FIGHTER_MIN_SPEED = 320;
 export const FIGHTER_MAX_SPEED = 460;
+/** Endless mode speeds fighters up to this; nothing may be faster. */
+export const FIGHTER_SPEED_LIMIT = 580;
 export const FIGHTER_TRIGGER_DISTANCE = 600;
 /** Afterburner kick-in: units/s^2 (reaches full speed in about a quarter of a second). */
 export const FIGHTER_ACCELERATION = 1500;
@@ -16,7 +18,7 @@ const WORLD_MARGIN = 80;
 export type FighterState = 'parked' | 'streaking';
 
 export interface FighterOptions {
-    /** Streak speed in [320, 460] units/s. */
+    /** Streak speed: [320, 460] units/s, up to 580 in endless mode. */
     speed: number;
     /** +1 streaks left to right, -1 right to left. */
     direction: Heading;
@@ -46,8 +48,8 @@ export class FighterJet extends Enemy {
 
     constructor(id: number, x: number, y: number, options: FighterOptions) {
         super(id, x, y, FIGHTER_WIDTH, FIGHTER_HEIGHT, FIGHTER_POINTS);
-        if (!Number.isFinite(options.speed) || options.speed < FIGHTER_MIN_SPEED || options.speed > FIGHTER_MAX_SPEED) {
-            throw new RangeError(`FighterJet speed must be within [${FIGHTER_MIN_SPEED}, ${FIGHTER_MAX_SPEED}].`);
+        if (!Number.isFinite(options.speed) || options.speed < FIGHTER_MIN_SPEED || options.speed > FIGHTER_SPEED_LIMIT) {
+            throw new RangeError(`FighterJet speed must be within [${FIGHTER_MIN_SPEED}, ${FIGHTER_SPEED_LIMIT}].`);
         }
         const trigger = options.triggerDistance ?? FIGHTER_TRIGGER_DISTANCE;
         if (!Number.isFinite(trigger) || trigger <= 0) throw new RangeError('FighterJet triggerDistance must be positive.');

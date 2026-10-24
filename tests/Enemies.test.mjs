@@ -112,11 +112,17 @@ test('patrolBounds: returns null when the channel is too narrow for the hull', (
 
 // ------------------------------------------------------------------ helicopter
 
-test('helicopter speed must be within 80..140', () => {
-    for (const speed of [79.9, 140.1, NaN, Infinity]) {
+test('helicopter speed must be within 80..245 (140 is normal; endless mode goes up to 1.75x)', () => {
+    for (const speed of [79.9, 245.1, NaN, Infinity]) {
         assert.throws(() => new Helicopter(1, 400, 1000, { speed, direction: 1 }), RangeError);
     }
-    for (const speed of [80, 110, 140]) assert.doesNotThrow(() => new Helicopter(1, 400, 1000, { speed, direction: -1 }));
+    for (const speed of [80, 110, 140, 200, 245]) assert.doesNotThrow(() => new Helicopter(1, 400, 1000, { speed, direction: -1 }));
+});
+
+test('a sped-up helicopter turns around harder in proportion; a normal one is unchanged', () => {
+    assert.equal(new Helicopter(1, 400, 1000, { speed: 100, direction: 1 }).acceleration, 240);
+    assert.equal(new Helicopter(1, 400, 1000, { speed: 140, direction: 1 }).acceleration, 240);
+    assert.equal(new Helicopter(1, 400, 1000, { speed: 245, direction: 1 }).acceleration, 240 * 1.75);
 });
 
 test('helicopter patrols the whole channel: always within bounds, reaching both ends', () => {
@@ -286,8 +292,9 @@ test('drifter is pushed along as the banks close in under it', () => {
 
 // ---------------------------------------------------------------------- fighter
 
-test('fighter speed must be within 320..460 and the trigger distance positive', () => {
-    for (const speed of [319, 461, NaN]) assert.throws(() => new FighterJet(1, 0, 1000, { speed, direction: 1 }), RangeError);
+test('fighter speed must be within 320..580 (460 is normal; endless mode goes up to 580) and the trigger distance positive', () => {
+    for (const speed of [319, 581, NaN]) assert.throws(() => new FighterJet(1, 0, 1000, { speed, direction: 1 }), RangeError);
+    for (const speed of [320, 460, 520, 580]) assert.doesNotThrow(() => new FighterJet(1, 0, 1000, { speed, direction: 1 }));
     assert.throws(() => new FighterJet(1, 0, 1000, { speed: 400, direction: 1, triggerDistance: 0 }), RangeError);
     assert.equal(new FighterJet(1, 0, 1000, { speed: 400, direction: 1 }).triggerDistance, 600);
 });

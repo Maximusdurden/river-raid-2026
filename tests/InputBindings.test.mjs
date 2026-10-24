@@ -314,7 +314,7 @@ test('onBindingsChange fires for rebind, setBindings and reset, and can unsubscr
     f.input.resetDefaultBindings();
     assert.deepEqual(seen, ['KeyF', 'KeyG', 'Space+KeyJ+Mouse0+Enter']);
     off();
-    f.input.rebind('fire', ['KeyH']);
+    f.input.rebind('fire', ['KeyK']);
     assert.equal(seen.length, 3);
 });
 

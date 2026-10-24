@@ -8,17 +8,19 @@
 </head>
 <body>
 <header>
-    <h1>River Raid 2026 <span>/ Phase 5</span></h1>
+    <h1>River Raid 2026 <span>/ Phase 6</span></h1>
     <form id="seed-form" onsubmit="return false">
         <input id="seed-input" type="text" autocomplete="off" spellcheck="false" aria-label="Seed" placeholder="Seed (number or any text)">
         <button id="seed-apply" type="button">Apply seed</button>
         <button id="seed-random" type="button">Random</button>
     </form>
     <button id="restart" type="button">Restart</button>
+    <button id="scores-button" type="button" aria-haspopup="dialog" aria-expanded="false">🏆 High Scores <kbd>H</kbd></button>
     <button id="mute-toggle" type="button" aria-pressed="false">Mute (M)</button>
     <label>Vol <input id="volume" type="range" min="0" max="100" step="5" value="60" aria-label="Master volume"></label>
-    <label><input id="guides-toggle" type="checkbox"> Hitboxes</label>
-    <label><input id="debug-toggle" type="checkbox" checked> Debug</label>
+    <!-- Developer toggles: always start OFF. autocomplete="off" stops a browser restoring a ticked box on reload. -->
+    <label><input id="guides-toggle" type="checkbox" autocomplete="off"> Hitboxes</label>
+    <label><input id="debug-toggle" type="checkbox" autocomplete="off"> Debug</label>
 </header>
 
 <div id="stage">
@@ -29,7 +31,7 @@
 </div>
 
 <footer>
-    Steer <kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> · boost <kbd>↑</kbd>/<kbd>W</kbd> · brake <kbd>↓</kbd>/<kbd>S</kbd> · fire <kbd>Space</kbd>/<kbd>J</kbd>/<kbd>Enter</kbd>/click (hold to repeat) · gamepad stick / D-pad, A / RB / RT · pause <kbd>Esc</kbd>/<kbd>P</kbd> · mute <kbd>M</kbd> · options <kbd>O</kbd> (rebind keys, audio, game mode) ·
+    Steer <kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> · boost <kbd>↑</kbd>/<kbd>W</kbd> · brake <kbd>↓</kbd>/<kbd>S</kbd> · fire <kbd>Space</kbd>/<kbd>J</kbd>/<kbd>Enter</kbd>/click (hold to repeat) · gamepad stick / D-pad, A / RB / RT · pause <kbd>Esc</kbd>/<kbd>P</kbd> · mute <kbd>M</kbd> · options <kbd>O</kbd> (rebind keys, audio, game mode) · high scores <kbd>H</kbd> ·
     <a href="./input-demo.html">Input lab</a>
 </footer>
 <noscript>This game requires JavaScript.</noscript>

@@ -1,10 +1,11 @@
 import { Mulberry32, combineSeed } from '../core/PRNG.js';
 import type { DepotWorld, DepotPlacement } from '../entities/FuelDepot.js';
 import { Enemy, patrolBounds, type EnemyKind, type Heading } from '../entities/enemies/Enemy.js';
-import { FighterJet, FIGHTER_HEIGHT, FIGHTER_MAX_SPEED, FIGHTER_MIN_SPEED, FIGHTER_TRIGGER_DISTANCE, FIGHTER_WIDTH } from '../entities/enemies/FighterJet.js';
-import { Helicopter, HELICOPTER_HEIGHT, HELICOPTER_MAX_SPEED, HELICOPTER_MIN_SPEED, HELICOPTER_WIDTH } from '../entities/enemies/Helicopter.js';
+import { FighterJet, FIGHTER_HEIGHT, FIGHTER_MAX_SPEED, FIGHTER_MIN_SPEED, FIGHTER_SPEED_LIMIT, FIGHTER_TRIGGER_DISTANCE, FIGHTER_WIDTH } from '../entities/enemies/FighterJet.js';
+import { Helicopter, HELICOPTER_HEIGHT, HELICOPTER_MAX_SPEED, HELICOPTER_MIN_SPEED, HELICOPTER_SPEED_LIMIT, HELICOPTER_WIDTH } from '../entities/enemies/Helicopter.js';
 import { PatrolBoat, PATROL_BOAT_HEIGHT, PATROL_BOAT_MAX_SPEED, PATROL_BOAT_MIN_SPEED, PATROL_BOAT_WIDTH, type PatrolBoatMode } from '../entities/enemies/PatrolBoat.js';
 import { boxTouchesLand, type Box } from './CollisionSystem.js';
+import type { DifficultyCurve } from './Difficulty.js';
 
 export interface EnemySpawnConfig {
     /** Master switch (tests and tutorials can turn the armada off). */
@@ -102,6 +103,9 @@ export interface DepotLayout {
 }
 
 const SALT_ENEMY = 0xe4e41000;
+const SALT_EXTRA = 0xe4e42000;
+/** An extra enemy keeps at least this far (along the river) from the regular ones of its slot. */
+const EXTRA_CLEARANCE = 45;
 const MAX_CACHED_SLOTS = 1024;
 const DEPOT_SCAN_PAD = 160;
 
@@ -161,6 +165,7 @@ export class EnemySpawner {
     private readonly depots: DepotLayout;
     private readonly bridgeSpacing: number;
     private readonly cache = new Map<number, readonly EnemyPlacement[]>();
+    private curve: DifficultyCurve | null = null;
 
     constructor(world: EnemySpawnWorld, depots: DepotLayout, config: Partial<EnemySpawnConfig> = {}) {
         this.world = world;
@@ -168,6 +173,17 @@ export class EnemySpawner {
         this.config = { ...DEFAULT_ENEMY_SPAWN_CONFIG, ...config };
         validateConfig(this.config);
         this.bridgeSpacing = world.config.bridgeEverySections * world.config.sectionLength;
+    }
+
+    /**
+     * Endless mode: scales helicopter and fighter speeds, widens the fighter trigger and adds an
+     * extra enemy between the regular waves, all by the stage of the spot an enemy is placed at.
+     * `null` restores the plain campaign layout. A placement is still a pure function of
+     * (seed, slot, curve), so a run stays replayable. Clears the cache: call it before streaming.
+     */
+    setDifficulty(curve: DifficultyCurve | null): void {
+        this.curve = curve;
+        this.cache.clear();
     }
 
     /** Difficulty stage at a world Y: the number of bridges below it. */
@@ -223,6 +239,37 @@ export class EnemySpawner {
     // ----------------------------------------------------------- generation
 
     private compute(slot: number): readonly EnemyPlacement[] {
+        const regular = this.computeRegular(slot);
+        if (!this.curve || slot < 0) return regular;
+        const extra = this.computeExtra(slot, regular);
+        return extra ? [...regular, extra] : regular;
+    }
+
+    /**
+     * Endless mode's extra enemy: halfway between this slot and the next, so the gaps between
+     * waves close up. Its own random stream, so it never changes what the regular slot spawns.
+     */
+    private computeExtra(slot: number, regular: readonly EnemyPlacement[]): EnemyPlacement | null {
+        const c = this.config;
+        const curve = this.curve;
+        if (!curve) return null;
+        const rng = new Mulberry32(combineSeed(this.world.seed, slot, SALT_EXTRA));
+        const y = slot * c.spacing + c.spacing / 2 + (rng.next() * 2 - 1) * (c.jitter / 2);
+        const roll = rng.next();
+        if (y < c.minY) return null;
+        const stage = this.stageAt(y);
+        if (!(roll < curve(stage).extraEnemyChance)) return null;
+        if (regular.some(p => Math.abs(p.y - y) < EXTRA_CLEARANCE)) return null;
+        let channel: { readonly leftX: number; readonly rightX: number } | undefined;
+        for (const candidate of this.world.getChannels(y)) {
+            if (!channel || candidate.rightX - candidate.leftX > channel.rightX - channel.leftX) channel = candidate;
+        }
+        if (!channel) return null;
+        // Boats and helicopters only: a fighter crosses the whole river and is placed by its own rules.
+        return this.patroller(slot * 4 + 2, this.pickKind(stage, rng, false), y, channel, stage, rng);
+    }
+
+    private computeRegular(slot: number): readonly EnemyPlacement[] {
         const c = this.config;
         const world = this.world;
         if (slot < 0) return [];
@@ -332,7 +379,9 @@ export class EnemySpawner {
             return { id, kind: 'patrol-boat', x, y, stage, mode, speed, direction };
         }
         // Stage 0 helicopters are slow (80-98); the full 80-140 opens up by stage 3.
-        const speed = HELICOPTER_MIN_SPEED + (HELICOPTER_MAX_SPEED - HELICOPTER_MIN_SPEED) * speedRoll * (0.3 + 0.7 * stageFactor);
+        const normal = HELICOPTER_MIN_SPEED + (HELICOPTER_MAX_SPEED - HELICOPTER_MIN_SPEED) * speedRoll * (0.3 + 0.7 * stageFactor);
+        // Endless mode: +5% per bridge, never past the speed limit a Helicopter will accept.
+        const speed = Math.min(HELICOPTER_SPEED_LIMIT, normal * (this.curve ? this.curve(stage).helicopterSpeedScale : 1));
         return { id, kind: 'helicopter', x, y, stage, speed, direction };
     }
 
@@ -349,11 +398,14 @@ export class EnemySpawner {
         const x = side === 1
             ? Math.max(-FIGHTER_WIDTH, river.leftBankX - offset)
             : Math.min(worldWidth + FIGHTER_WIDTH, river.rightBankX + offset);
+        // Endless mode: fighters launch from further away and streak faster as the bridges fall.
+        const profile = this.curve ? this.curve(stage) : null;
+        const normal = FIGHTER_MIN_SPEED + (FIGHTER_MAX_SPEED - FIGHTER_MIN_SPEED) * speedRoll;
         return {
             id, kind: 'fighter', x, y, stage,
-            speed: FIGHTER_MIN_SPEED + (FIGHTER_MAX_SPEED - FIGHTER_MIN_SPEED) * speedRoll,
+            speed: Math.min(FIGHTER_SPEED_LIMIT, normal * (profile?.fighterSpeedScale ?? 1)),
             direction: side,
-            triggerDistance: FIGHTER_TRIGGER_DISTANCE - 60 + 120 * triggerRoll,
+            triggerDistance: (profile?.fighterTrigger ?? FIGHTER_TRIGGER_DISTANCE) - 60 + 120 * triggerRoll,
         };
     }
 

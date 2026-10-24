@@ -104,7 +104,18 @@ test('every element main.ts looks up exists in the game page, in the right place
     const stage = html.slice(html.indexOf('id="stage"'), html.indexOf('<footer'));
     assert.ok(stage.includes('id="options-button"'), 'the Options button lives inside #stage, before the footer');
     assert.ok(!/<a\b[^>]*>[^<]*<button/.test(html), 'no button nested inside a link');
-    assert.match(html, /<h1>[^<]*<span>\/ Phase 5<\/span><\/h1>/);
+    assert.match(html, /<h1>[^<]*<span>\/ Phase 6<\/span><\/h1>/);
+
+    // Production defaults: neither developer toggle starts ticked, and a browser may not restore one on reload.
+    for (const id of ['debug-toggle', 'guides-toggle']) {
+        const tag = html.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
+        assert.ok(tag, `#${id} exists`);
+        assert.ok(!/\schecked(\s|=|>|\/)/.test(tag), `#${id} must not start checked`);
+        assert.match(tag, /autocomplete="off"/, `#${id} needs autocomplete=off so a reload cannot restore it`);
+    }
+    const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+    assert.ok(header.includes('id="scores-button"'), 'the High Scores button is in the header');
+    assert.match(header, /High Scores/);
 });
 
 test('the stylesheet pulls in nothing external', () => {

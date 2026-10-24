@@ -60,6 +60,30 @@ export const DEFAULT_JET_CONFIG: Readonly<PlayerJetConfig> = {
     stallDeceleration: 260,
 };
 
+/**
+ * The jet's limits at a difficulty speed scale `k`: every forward speed, every sideways limit
+ * and the engine-out glide are multiplied by `k` together. Keeping them proportional is what
+ * keeps the river flyable as it speeds up: the sideways speed needed to follow a bank is in
+ * proportion to forward speed, so scaling one without the other would steepen the river for
+ * the player. Time to reach top speed, and time to swerve, stay the same; sizes, roll and
+ * durations are untouched.
+ */
+export function scaleJetConfig(base: Readonly<PlayerJetConfig>, k: number): PlayerJetConfig {
+    if (!Number.isFinite(k) || k <= 0) throw new RangeError('Jet speed scale must be a positive finite number.');
+    return {
+        ...base,
+        minSpeed: base.minSpeed * k,
+        cruiseSpeed: base.cruiseSpeed * k,
+        maxSpeed: base.maxSpeed * k,
+        acceleration: base.acceleration * k,
+        deceleration: base.deceleration * k,
+        maxLateralSpeed: base.maxLateralSpeed * k,
+        lateralAcceleration: base.lateralAcceleration * k,
+        lateralDeceleration: base.lateralDeceleration * k,
+        stallDeceleration: base.stallDeceleration * k,
+    };
+}
+
 export interface JetInput {
     /** -1 (left) .. +1 (right). */
     moveX: number;
@@ -122,7 +146,10 @@ function validateJetConfig(c: PlayerJetConfig): void {
  * Public position fields are written only by `spawn` / `update` / `destroy`.
  */
 export class PlayerJet {
-    readonly config: Readonly<PlayerJetConfig>;
+    /** The limits as configured, before any difficulty scale. */
+    readonly baseConfig: Readonly<PlayerJetConfig>;
+    private effective: Readonly<PlayerJetConfig>;
+    private scale = 1;
 
     x = 0;
     y = 0;
@@ -146,10 +173,32 @@ export class PlayerJet {
     private readonly maxRollRadians: number;
 
     constructor(config: Partial<PlayerJetConfig> = {}) {
-        this.config = { ...DEFAULT_JET_CONFIG, ...config };
-        validateJetConfig(this.config);
-        this.maxRollRadians = (this.config.maxRollDegrees * Math.PI) / 180;
-        this.speed = this.config.cruiseSpeed;
+        this.baseConfig = { ...DEFAULT_JET_CONFIG, ...config };
+        validateJetConfig(this.baseConfig);
+        this.effective = this.baseConfig;
+        this.maxRollRadians = (this.baseConfig.maxRollDegrees * Math.PI) / 180;
+        this.speed = this.baseConfig.cruiseSpeed;
+    }
+
+    /** The limits in force now: `baseConfig` times the difficulty speed scale. */
+    get config(): Readonly<PlayerJetConfig> {
+        return this.effective;
+    }
+
+    /** The current difficulty speed scale (1 = as configured). */
+    get speedScale(): number {
+        return this.scale;
+    }
+
+    /**
+     * Scales every forward and sideways limit by `k` (see `scaleJetConfig`). The jet's current
+     * speed is left alone and eases to the new limits at the new acceleration, so a change in
+     * mid-flight is smooth. Throws unless `k` is positive and finite.
+     */
+    setSpeedScale(k: number): void {
+        if (!Number.isFinite(k) || k <= 0) throw new RangeError('Jet speed scale must be a positive finite number.');
+        this.scale = k;
+        this.effective = k === 1 ? this.baseConfig : scaleJetConfig(this.baseConfig, k);
     }
 
     /** (Re)starts the jet ALIVE at the given world position, cruising straight. */

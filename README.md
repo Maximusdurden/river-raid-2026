@@ -419,5 +419,104 @@ tests that wire in the real `InputManager`).
   opening the screen freezes the world and Esc and O resume it (the Done button was checked in jsdom only);
   P and Esc still pause and unpause; a corrupt keybinds entry falls back to defaults; all 28 requests stayed
   inside the sub-path with none failing.
-- **Not verified**: the GitHub Actions workflow itself has never run (only parsed), how the audio sounds on real
-  speakers, or physical gamepads.
+- The GitHub Actions workflow runs on every push to `main` and has deployed the site. Its first two runs failed
+  on two page-checker tests that assumed a wrongly-capitalised path would still resolve (true on Windows, false on
+  Linux); the checker now decides that from directory listings, so it gives the same answer on every OS.
+- **Not verified**: how the audio sounds on real speakers, or physical gamepads.
+
+## Phase 6: harder endless runs, a high-score table, clean defaults
+
+### Endless mode gets harder with every bridge
+
+In **Endless River** the game scales with `stage`, the number of bridges destroyed (`src/systems/Difficulty.ts`,
+all pure functions). Campaign is stage 0 forever: nothing below applies to it. The numbers are in
+`DEFAULT_DIFFICULTY` and can be overridden per game (`new GameSession({ difficulty: { speedGrowth: 0.05 } })`).
+
+| What | How it grows | Ceiling |
+| --- | --- | --- |
+| Forward speed (cruise 220, brake 90, boost 420) | +3.5% per bridge in a straight line until the multiplier is 60% of the way to the cap (about bridge 14, x1.48), then easing into it | x1.8 (cruise ~396, brake ~162, boost ~756), approached but never passed |
+| **Sideways speed and acceleration** | the **same factor** as forward speed | x1.8 |
+| Fuel burn | +2.5% per bridge | x1.6 (hard stop at bridge 24) |
+| Helicopter sweep speed | +5% per bridge | x1.75 (bridge 15), limit 245 units/s |
+| Fighters | launch from 600 units away at first, 850 units at bridge 15; fastest streak 460 up to 580 | 850 / 580 |
+| Fuel depots | untouched to bridge 10, then 15% fewer, eased in over ten bridges | x0.85 |
+| Enemy waves | an extra boat or helicopter between the regular ones: 6% chance per bridge | 60%. Measured over ten seeds, the average gap between neighbouring enemies shrinks 14% over bridges 1-4, 26% over 5-9 and 35% from bridge 10 on (+16%, +36% and +55% more enemies) |
+
+**Why the river stays flyable.** The sideways speed needed to follow a bank is in proportion to forward speed, so
+scaling forward speed alone would make every bend steeper. The jet scales all of them together (`scaleJetConfig`),
+so the share of its sideways speed that the steepest bank demands is *identical* at every stage (a test measures
+the steepest bank on five seeds and checks it to 1e-9), and time to swerve or to reach top speed is unchanged.
+An autopilot also flies 30 seconds at the speed cap, cruising and at full boost, on four seeds without a crash.
+At the cap the jet moves 12.6 units a tick, less than its own 20-unit length, so nothing can be skipped over.
+
+Things placed in the river are scaled by where they are (`RiverGenerator.stageAt(y)`, the bridges below that spot),
+so the layout is still a pure function of the seed and every run replays exactly. Depot thinning only ever removes
+depots (a slot keeps its roll and is compared with a smaller chance), and the extra enemies use their own random
+stream, so no regular enemy moves. One side effect: thinning depots frees a little room, so from bridge 10 a few
+enemies that were refused for being too near a depot can appear.
+
+A bridge banner in endless mode now also reads the speed-up, for example `BRIDGE DESTROYED  +500  SPEED +3.5%`.
+
+### High scores
+
+`src/systems/HighScoreSystem.ts` keeps the ten best runs in `localStorage['riverraid.highscores']`. A first launch
+writes a classic table (`ACE` 18,500, `MAX` 14,200, `RAI` 11,800, `DEX` 9,400, `PIL` 7,200).
+
+- A score qualifies if it is above zero and would land in the top ten. **Ties rank below the older score**, and
+  equalling 10th place does not displace it. It beats the **record** only if it is strictly above number one.
+- Initials are three characters from A-Z, 0-9, dot and dash. Whatever is read back is repaired or dropped, re-sorted
+  and pruned to ten; unreadable data starts again from the classic table.
+- **Reset Leaderboard** (in Options, behind a second confirming click) restores that classic table.
+
+When a run ends, the verdict shows for 1.5 seconds (3.2 after a victory, so the fanfare finishes). If the score makes
+the table, the sad game-over tune is skipped, a `new-high-score` fanfare plays, and the initials screen opens. Beating
+the record instead gets the `record-broken` fanfare (the grand victory theme with the extra-life arpeggio three times
+over), a double flashing golden border, a pulsing **★ NEW ALL-TIME RECORD! ★** banner and fireworks.
+After saving, the table opens with your run blinking; closing it shows the game-over card and Fire restarts. A score
+that does not qualify just gets the usual game-over card.
+
+**Initials screen** (`src/ui/InitialsEntry.ts`): Left/Right move between slots, Up/Down cycle the character,
+typing sets a slot and moves on, Backspace steps back, Space/Enter or the OK button confirm a slot, and confirming
+the third (or DONE, or gamepad Start) saves. Gamepad: D-pad or left stick, A confirm, B back, Start save. Slots are
+real text inputs, so on-screen keyboards work and the page's M, O and H shortcuts stand down while you type.
+**A and D type letters** rather than steering: a letter cannot be both a name and a movement key, so typing wins.
+A key held when the screen opens never types or confirms, and the confirm keys wait 450 ms.
+
+**The table** (`src/ui/LeaderboardView.ts`): press **H**, click 🏆 High Scores in the header, or use Options.
+It pauses the game while open. `H` is reserved like `M` and `O`, so it cannot be bound to an action.
+
+### Clean defaults
+
+Hitboxes and the debug overlay are **off on every load** (`src/core/DisplayFlags.ts`). They are never remembered.
+For development, `?debug=1`, `?hitboxes=1` or `?dev=1` turn them on, and the header toggles still work for the
+session. The page sets the two checkboxes from those flags on boot rather than trusting them, and they carry
+`autocomplete="off"`, so a browser restoring a ticked box on reload cannot leak.
+
+### Two bugs the browser found
+
+- Closing a screen with Enter or Space also sent that key to the game, which fired a missile or, after a run, restarted
+  it. The engine now ignores the pause and fire presses in the frame right after a screen releases its hold, and the
+  host blocks a restart for 450 ms after any score screen closes.
+- The record banner collided with the score panel and the GAME OVER text, and the fireworks were drawn under the
+  end screen's dimming layer. The card now sits lower during a celebration and the fireworks are drawn again on top.
+
+### Verified
+
+- 738 automated tests (the suite passes on Windows and on Linux): the difficulty curves and their caps, the
+  strict proportionality of speed and maneuverability at every stage, spawner scaling and its determinism,
+  leaderboard insertion, tie-breaking, pruning, the starting table, corrupt storage, qualification, the initials
+  screen for keyboard, mouse, gamepad and touch input, the table, the options section, the celebration and the
+  clean defaults.
+- `node scripts/mutation-check.mjs --phase6` breaks 30 behaviours one at a time (for example "sideways speed not
+  scaled", "a tie ranks above the older score", "held keys type into the initials") and confirms a test fails for
+  each: 30 of 30 caught. The Phase 5 set is the same command without the flag.
+- In a real browser, served under a sub-path: a real-keyboard flight in endless destroyed bridge 1 and the jet's
+  cruise became 227.7 with sideways speed 393.3 (both x1.035), burn x1.025 and the banner `SPEED +3.5%`; crashing
+  on purpose opened the initials screen after the delay; typing `M`, `H` and `O` typed letters instead of muting or
+  opening screens; Space saved the entry, the table opened with the new row blinking and the score persisted;
+  Esc closed it and a Fire press 150 ms later did **not** restart while one 850 ms later did; a 20,000 run took the
+  record fanfare and banner; reset needed its confirmation; and the toggles are off after every reload, on with
+  `?dev=1`.
+- **Not verified**: physical gamepads (the pad logic is tested against fake pads), the sound by ear, and touch devices.
+  A run's score was raised through the scoring API (`progression.award`) to reach the table quickly; the crash, the
+  results flow and the keyboard were real.

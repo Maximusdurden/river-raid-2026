@@ -44,7 +44,17 @@ export type SoundCue =
     | 'respawn'
     | 'game-over'
     | 'victory'
-    | 'fighter-launch';
+    | 'fighter-launch'
+    /** The run made the Top 10. */
+    | 'new-high-score'
+    /** The run beat the all-time record: the grandest cue in the game. */
+    | 'record-broken'
+    /** One step of the initials picker (a letter cycles). */
+    | 'menu-tick'
+    /** A slot of the initials picker was confirmed. */
+    | 'menu-select'
+    /** The initials were saved. */
+    | 'score-saved';
 
 /** What the HUD shows: `locked` means sound is available but waiting for a first click or key press. */
 export type AudioState = 'unsupported' | 'locked' | 'on' | 'muted';
@@ -633,6 +643,11 @@ export class SoundEngine {
             case 'respawn': this.playRespawn(t); break;
             case 'game-over': this.playGameOver(t); break;
             case 'fighter-launch': this.playWhoosh(t); break;
+            case 'new-high-score': this.playNewHighScore(t); break;
+            case 'record-broken': this.playRecordBroken(t); break;
+            case 'menu-tick': this.playMenuTick(t); break;
+            case 'menu-select': this.playMenuSelect(t); break;
+            case 'score-saved': this.playScoreSaved(t); break;
         }
         this.cueLog.push(cue);
         if (this.cueLog.length > 64) this.cueLog.shift();
@@ -921,6 +936,42 @@ export class SoundEngine {
             this.tone({ type: 'sine', freq: notes[i] ?? 1000, start: t + i * 0.075, duration: i === notes.length - 1 ? 0.5 : 0.16, peak: 0.2, attack: 0.004 });
         }
         this.tone({ type: 'triangle', freq: 523.25, start: t, duration: 0.45, peak: 0.12 });
+    }
+
+    /** The bridge fanfare with a rising run of chimes on top: you are on the board. */
+    private playNewHighScore(t: number): void {
+        this.playFanfare(t, false);
+        this.playExtraLife(t + 0.55);
+    }
+
+    /**
+     * The all-time record: the grand victory fanfare, then the extra-life arpeggio three times, each a
+     * little higher than the last, over a shimmer of square-wave chords.
+     */
+    private playRecordBroken(t: number): void {
+        this.playFanfare(t, true);
+        this.playExtraLife(t + 0.55);
+        this.playExtraLife(t + 1.2);
+        this.playExtraLife(t + 1.85);
+        this.chord([1046.5, 1318.5, 1568.0, 2093.0], t + 2.2, 1.1, 0.3, 'square');
+        this.tone({ type: 'triangle', freq: 261.63, start: t + 2.2, duration: 1.1, peak: 0.24, attack: 0.02 });
+    }
+
+    private playMenuTick(t: number): void {
+        this.tone({ type: 'square', freq: 1320, endFreq: 990, start: t, duration: 0.035, peak: 0.1, attack: 0.001, filterHz: 3600 });
+    }
+
+    private playMenuSelect(t: number): void {
+        this.tone({ type: 'triangle', freq: 660, endFreq: 1100, start: t, duration: 0.09, peak: 0.2, attack: 0.002 });
+    }
+
+    /** A bright four-note chime that settles on a chord: saved. */
+    private playScoreSaved(t: number): void {
+        const notes = [783.99, 987.77, 1174.66, 1567.98];
+        for (let i = 0; i < notes.length; i++) {
+            this.tone({ type: 'triangle', freq: notes[i] ?? 800, start: t + i * 0.065, duration: 0.14, peak: 0.2, attack: 0.003 });
+        }
+        this.chord([523.25, 659.25, 783.99], t + 0.28, 0.5, 0.26, 'triangle');
     }
 
     private playRespawn(t: number): void {

@@ -195,12 +195,13 @@ export class Engine {
     /** Open menus and the like, each freezing the simulation until it releases its hold. */
     private readonly pauseHolds = new Set<symbol>();
     /**
-     * Set when the last hold is released: the very next frame ignores a pause press. The key that
-     * closes a menu (Esc) is also the pause key, and its press is latched by the input manager
-     * until the next frame, by which time the hold is gone. Without this, closing the menu with
-     * Esc would leave the game paused.
+     * Set when the last hold is released: the very next frame ignores a pause press and a fire
+     * press. The key that closes a menu (Esc, or Space / Enter on a screen's button) is also a game
+     * key, and its press is latched by the input manager until the next frame, by which time the
+     * hold is gone. Without this, closing the menu with Esc would leave the game paused, and
+     * closing a screen with Enter would fire a missile (or restart a finished run).
      */
-    private swallowPausePress = false;
+    private swallowEdges = false;
     private pendingFire = false;
     private lastInput: InputState = {
         moveX: 0, moveY: 0, fire: false, firePressed: false, pausePressed: false, activeDevice: 'keyboard',
@@ -257,7 +258,7 @@ export class Engine {
         const hold = Symbol('pause-hold');
         this.pauseHolds.add(hold);
         return () => {
-            if (this.pauseHolds.delete(hold) && this.pauseHolds.size === 0) this.swallowPausePress = true;
+            if (this.pauseHolds.delete(hold) && this.pauseHolds.size === 0) this.swallowEdges = true;
         };
     }
 
@@ -330,12 +331,12 @@ export class Engine {
 
         const input = this.input.update();
         this.lastInput = input;
-        const swallowPause = this.swallowPausePress;
-        this.swallowPausePress = false; // only ever covers the one frame right after the release
-        if (input.pausePressed && this.pauseHolds.size === 0 && !swallowPause) this.userPaused = !this.userPaused;
+        const swallow = this.swallowEdges;
+        this.swallowEdges = false; // only ever covers the one frame right after the release
+        if (input.pausePressed && this.pauseHolds.size === 0 && !swallow) this.userPaused = !this.userPaused;
         const paused = this.isPaused;
         if (paused) this.pendingFire = false; // Presses made while paused are discarded.
-        else if (input.firePressed) this.pendingFire = true;
+        else if (input.firePressed && !swallow) this.pendingFire = true;
         this.throttle = input.moveY;
 
         const dt = this.config.fixedDeltaTime;

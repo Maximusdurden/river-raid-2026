@@ -1,5 +1,6 @@
 import { SoundEngine } from './audio/SoundEngine.js';
 import { Engine } from './core/Engine.js';
+import { resolveDisplayFlags } from './core/DisplayFlags.js';
 import { InputManager } from './core/InputManager.js';
 import { parseSeed, randomSeed } from './core/PRNG.js';
 import { defaultStorage } from './core/Storage.js';
@@ -8,6 +9,9 @@ import { loadGameMode, saveGameMode } from './game/GameMode.js';
 import { GameSession } from './game/GameSession.js';
 import { GameRenderer } from './rendering/GameRenderer.js';
 import { VIEW_HEIGHT } from './rendering/RiverRenderer.js';
+import { HighScoreBoard } from './systems/HighScoreSystem.js';
+import { InitialsEntry } from './ui/InitialsEntry.js';
+import { LeaderboardView } from './ui/LeaderboardView.js';
 import { OptionsModal } from './ui/OptionsModal.js';
 import { RiverGenerator } from './world/RiverGenerator.js';
 
@@ -30,6 +34,7 @@ const restartButton = byId('restart', HTMLButtonElement);
 const muteButton = byId('mute-toggle', HTMLButtonElement);
 const volumeSlider = byId('volume', HTMLInputElement);
 const optionsButton = byId('options-button', HTMLButtonElement);
+const scoresButton = byId('scores-button', HTMLButtonElement);
 
 // Settings (keybinds, audio, game mode) persist through localStorage where it is available;
 // private modes and sandboxed frames just skip it.
@@ -40,9 +45,17 @@ let seedSource = params.get('seed') ?? '';
 let seed = seedSource === '' ? randomSeed() : parseSeed(seedSource);
 if (seedSource === '') seedSource = String(seed);
 
+// Production defaults: hitboxes and the debug overlay are OFF on every load. Only an explicit dev flag
+// in the URL (?debug=1, ?hitboxes=1, ?dev=1) turns them on; the header toggles do it for one session.
+// The checkboxes are set from the flags rather than trusted, so a browser restoring a ticked box on reload cannot leak.
+const displayFlags = resolveDisplayFlags(location.search);
+guidesToggle.checked = displayFlags.showHitboxes;
+debugToggle.checked = displayFlags.showDebugOverlay;
+debug.hidden = !displayFlags.showDebugOverlay;
+
 const input = new InputManager({ deadzone: 0.15, storage });
 const session = new GameSession({ viewHeight: VIEW_HEIGHT, mode: loadGameMode(storage) });
-const renderer = new GameRenderer(canvas, new RiverGenerator(seed), session, { showGuides: guidesToggle.checked });
+const renderer = new GameRenderer(canvas, new RiverGenerator(seed), session, { showGuides: displayFlags.showHitboxes });
 const engine = new Engine({ seed, input, renderer, simulation: session });
 seedInput.value = seedSource;
 
@@ -80,10 +93,79 @@ const options = new OptionsModal({
         optionsButton.setAttribute('aria-expanded', String(open));
         if (open) hint.hidden = true;
     },
+    canOpen: () => !scoresView.isOpen && !initials.isOpen,
+    highScores: { show: () => scoresView.open(), reset: () => board.reset() },
 });
-optionsButton.addEventListener('click', () => options.open());
+optionsButton.addEventListener('click', () => {
+    if (!scoresView.isOpen && !initials.isOpen) options.open();
+});
 
-session.onEvent(event => sound.handleEvent(event));
+// ---------------------------------------------------------------- high scores
+
+const board = new HighScoreBoard({ storage });
+/** The score screens. While one is open, or just after one closes, Fire must not restart the run. */
+let restartBlockedUntil = 0;
+const RESTART_GRACE_MS = 450;
+
+const scoresView = new LeaderboardView({
+    document,
+    board,
+    holdPause: () => engine.holdPause(),
+    returnFocus: canvas,
+    canOpen: () => !options.isOpen && !initials.isOpen,
+    onOpenChange: open => {
+        scoresButton.setAttribute('aria-expanded', String(open));
+        if (open) hint.hidden = true;
+        else restartBlockedUntil = performance.now() + RESTART_GRACE_MS;
+    },
+});
+scoresButton.addEventListener('click', () => {
+    if (!options.isOpen && !initials.isOpen) scoresView.open();
+});
+
+/** The run that earned a place, waiting for its initials. */
+let pendingRun: { score: number; bridgesCleared: number; mode: 'campaign' | 'endless' } | null = null;
+
+const initials = new InitialsEntry({
+    document,
+    returnFocus: canvas,
+    play: cue => sound.play(cue),
+    onOpenChange: open => {
+        if (open) hint.hidden = true;
+        else restartBlockedUntil = performance.now() + RESTART_GRACE_MS;
+    },
+    onSubmit: text => {
+        const run = pendingRun;
+        pendingRun = null;
+        if (!run) return;
+        board.submit({ initials: text, ...run });
+        scoresView.open(); // Save -> show the table (with the new entry blinking) -> then restart is allowed
+    },
+});
+
+/** Pause after the run ends before the qualification check: the verdict is on screen first. */
+const RESULT_DELAY_DEFEAT = 1.5;
+/** After a win the victory fanfare plays out first. */
+const RESULT_DELAY_VICTORY = 3.2;
+let runResultHandled = false;
+
+function onRunEnded(): void {
+    const summary = session.summary;
+    const score = Math.floor(summary.score);
+    const rank = board.rankFor(score);
+    if (rank === null) return; // not good enough: the plain game-over card stands
+    const isRecord = board.beatsRecord(score);
+    renderer.celebration.start(isRecord ? 'record' : 'high-score');
+    sound.play(isRecord ? 'record-broken' : 'new-high-score');
+    pendingRun = { score, bridgesCleared: summary.bridges, mode: summary.mode };
+    initials.open({ score, rank, isRecord });
+}
+
+session.onEvent(event => {
+    // A run that makes the table gets the high-score fanfare instead of the sad game-over tune.
+    if (event.type === 'game-over' && board.qualifies(Math.floor(event.score))) return;
+    sound.handleEvent(event);
+});
 // Every rendered frame (including paused ones): drive the drone, refuel chime and klaxon.
 engine.onFrame(stats => {
     const jet = session.jet;
@@ -97,15 +179,41 @@ engine.onFrame(stats => {
 });
 
 
-function restart(): void {
+/** Starts a fresh run on the current seed: clears the celebration and the "result handled" latch too. */
+function resetRun(): void {
+    renderer.celebration.stop();
+    runResultHandled = false;
+    pendingRun = null;
     engine.reset(seed);
+}
+
+function restart(): void {
+    resetRun();
     canvas.focus();
 }
 
-// After the run ends (and a short grace period so a held fire button cannot skip the screen),
-// a fresh Fire press starts a new run. Deferred: never reset the engine from inside a tick.
+/** Y in the world for a point on the 960x720 screen, while the camera is parked at the end of a run. */
+function screenToWorldY(screenY: number): number {
+    return session.cameraY + (VIEW_HEIGHT - screenY);
+}
+
 engine.onTick(context => {
-    if (session.runEnded && session.gameOverTime > 1 && context.input.firePressed) queueMicrotask(restart);
+    // The fireworks of a high-score celebration.
+    renderer.celebration.update(context.deltaTime, burst => {
+        session.particles.celebrate(burst.x, screenToWorldY(burst.y), burst.scale);
+        if (burst.index % 3 === 2) session.particles.explosion(burst.x, screenToWorldY(burst.y), 0.9);
+    });
+    if (!session.runEnded) return;
+    // A moment after the run ends: does it make the table? If so, the initials screen opens.
+    const delay = session.victory ? RESULT_DELAY_VICTORY : RESULT_DELAY_DEFEAT;
+    if (!runResultHandled && session.gameOverTime >= delay) {
+        runResultHandled = true;
+        onRunEnded();
+    }
+    // After a short grace period (so a held Fire cannot skip the screen) a fresh Fire press starts a new
+    // run, but never while a score screen is up or only just closed. Deferred: never reset from inside a tick.
+    const screensClear = !initials.isOpen && !scoresView.isOpen && !options.isOpen && performance.now() >= restartBlockedUntil;
+    if (session.gameOverTime > 1 && context.input.firePressed && screensClear) queueMicrotask(restart);
 });
 
 function setSeed(text: string): void {
@@ -113,8 +221,11 @@ function setSeed(text: string): void {
     seed = trimmed === '' ? randomSeed() : parseSeed(trimmed);
     seedSource = trimmed === '' ? String(seed) : trimmed;
     seedInput.value = seedSource;
-    engine.reset(seed);
-    history.replaceState(null, '', `?seed=${encodeURIComponent(String(seed))}`);
+    resetRun();
+    // Keep any other query flags (?debug=1 and so on) when the seed changes.
+    const url = new URL(location.href);
+    url.searchParams.set('seed', String(seed));
+    history.replaceState(null, '', url);
     canvas.focus();
 }
 
@@ -176,6 +287,8 @@ function updateDebug(): void {
         `Score      ${session.score}  jets ${session.lives}  section ${session.stage + 1}  next 1UP ${session.progression.nextBonusAt ?? '-'}`,
         `Shots      ${session.weapon.activeCount}/${session.weapon.config.maxActiveProjectiles}  depots ${session.depots.size}  enemies ${session.enemies.size}  particles ${session.particles.count}`,
         `Mode       ${session.mode}${session.victoryGoal > 0 ? ` (${session.stage}/${session.victoryGoal} bridges)` : ` (${session.stage} bridges, no victory)`}`,
+        `Hardness   speed x${session.difficulty.speedScale.toFixed(2)}  burn x${session.difficulty.burnScale.toFixed(2)}  heli x${session.difficulty.helicopterSpeedScale.toFixed(2)}  fighter ${session.difficulty.fighterTrigger.toFixed(0)}  depots x${session.difficulty.depotChanceScale.toFixed(2)}`,
+        `Scores     record ${board.record}  latest rank ${board.latestRank ?? '-'}`,
         `Sound      ${sound.state}  vol ${Math.round(sound.masterVolume * 100)}%  sfx ${sound.sfxEnabled ? 'on' : 'off'}  drone ${sound.droneEnabled ? 'on' : 'off'}  alarm ${sound.warningsEnabled ? 'on' : 'off'}`,
         `Seed       ${seedText}`,
     ].join('\n');
@@ -199,6 +312,8 @@ function start(): void {
 window.addEventListener('pagehide', () => {
     engine.stop();
     options.destroy();
+    scoresView.destroy();
+    initials.destroy();
     void sound.destroy();
     input.destroy();
     window.clearInterval(debugTimer);
@@ -211,9 +326,12 @@ stage.addEventListener('pointerdown', () => canvas.focus());
 // Debug handle for the browser console and automated browser checks.
 declare global {
     interface Window {
-        __riverRaid?: { engine: Engine; session: GameSession; sound: SoundEngine; input: InputManager; options: OptionsModal };
+        __riverRaid?: {
+            engine: Engine; session: GameSession; sound: SoundEngine; input: InputManager; options: OptionsModal;
+            board: HighScoreBoard; scores: LeaderboardView; initials: InitialsEntry; renderer: GameRenderer;
+        };
     }
 }
-window.__riverRaid = { engine, session, sound, input, options };
+window.__riverRaid = { engine, session, sound, input, options, board, scores: scoresView, initials, renderer };
 
 start();

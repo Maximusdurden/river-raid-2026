@@ -262,6 +262,21 @@ export class RiverGenerator {
         return this.getSection(Math.floor(Math.max(0, worldY) / this.config.sectionLength));
     }
 
+    /** World units between bridges (3200 by default: 5 sections of 640). */
+    get bridgeInterval(): number {
+        return this.bridgeSpacing;
+    }
+
+    /**
+     * How many bridges lie below `worldY`: 0 before the first bridge, 1 between the first and
+     * second, and so on. This is the position's difficulty stage; because a bridge cannot be flown
+     * past without being destroyed, it is also the number of bridges the player has destroyed on
+     * arrival. Cheap and pure (no section is generated), so spawners can call it freely.
+     */
+    stageAt(worldY: number): number {
+        return Number.isFinite(worldY) ? Math.floor(Math.max(0, worldY) / this.bridgeSpacing) : 0;
+    }
+
     // --------------------------------------------------------------- bridges
 
     /** True if `worldY` lies on a bridge span. */
